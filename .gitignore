@@ -1,0 +1,34 @@
+# See https://help.github.com/articles/ignoring-files/
+
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# testing
+/coverage
+.coverage
+
+# production
+/addin/manifest.xml
+
+# misc
+.DS_Store
+*.pem
+
+# env files
+.env
+.env.*
+!.env.example
+
+# logs and runtime data
+/data/logs/
+/data/*.txt
+!/data/.gitkeep
+!/data/staff.json
+
+# next leftover
+/.next/
+/node_modules

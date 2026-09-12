@@ -1,0 +1,25 @@
+{
+  "notes": "Department holds the Outlook user's email so the add-in can filter staff for the signed-in mailbox.",
+  "staff": [
+    {
+      "StaffName": "Ada Lovelace",
+      "Department": "ada@contoso.com"
+    },
+    {
+      "StaffName": "Grace Hopper",
+      "Department": "ada@contoso.com"
+    },
+    {
+      "StaffName": "Alan Turing",
+      "Department": "alan@contoso.com"
+    },
+    {
+      "StaffName": "Katherine Johnson",
+      "Department": "katherine@contoso.com"
+    },
+    {
+      "StaffName": "Demo Assignee",
+      "Department": "demo@contoso.com"
+    }
+  ]
+}

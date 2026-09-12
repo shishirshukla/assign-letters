@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AssignLetters</title>
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    <link rel="stylesheet" href="taskpane.css" />
+  </head>
+  <body>
+    <header>
+      <h1>AssignLetters</h1>
+      <p class="hint" id="subtitle">Read-mode assignment form</p>
+    </header>
+
+    <p id="status" class="status" hidden></p>
+
+    <form id="form" hidden>
+      <div class="field">
+        <label for="staff">Staff</label>
+        <select id="staff" required>
+          <option value="">Select staff</option>
+        </select>
+        <div class="error" id="staff-error"></div>
+      </div>
+      <div class="field">
+        <label for="deadline">Deadline Date</label>
+        <input id="deadline" type="date" required />
+        <div class="error" id="deadline-error"></div>
+      </div>
+      <button type="submit" id="save">Save</button>
+    </form>
+
+    <script src="taskpane.js"></script>
+  </body>
+</html>

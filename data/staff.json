@@ -2,16 +2,16 @@
   "notes": "Department holds the Outlook user's email so the add-in can filter staff for the signed-in mailbox.",
   "staff": [
     {
-      "StaffName": "Ada Lovelace",
-      "Department": "ada@contoso.com"
+      "StaffName": "Shishir Shukla",
+      "Department": "agm.cdo@cgb.bank.in"
     },
     {
-      "StaffName": "Grace Hopper",
-      "Department": "ada@contoso.com"
+      "StaffName": "Isha Ransingh",
+      "Department": "agm.cdo@cgb.bank.in"
     },
     {
-      "StaffName": "Alan Turing",
-      "Department": "alan@contoso.com"
+      "StaffName": "Govind Vishwakarma",
+      "Department": "agm.cdo@cgb.bank.in"
     },
     {
       "StaffName": "Katherine Johnson",

@@ -9,7 +9,7 @@ from backend.main import create_app, filter_staff
 from backend.manifest import ManifestUrlError, generate_manifest, normalize_public_origin
 
 
-def make_client(tmp_path: Path) -> TestClient:
+def make_client(tmp_path: Path, **overrides) -> TestClient:
     staff = tmp_path / "staff.json"
     staff.write_text(
         '[{"StaffName":"Ada Lovelace","Department":"ada@contoso.com"},'
@@ -23,6 +23,7 @@ def make_client(tmp_path: Path) -> TestClient:
         header_name="X-AssignLetters-Id",
         missing_header_message="Header missing — cannot assign.",
         cors_allow_origins="*",
+        **overrides,
     )
     return TestClient(create_app(settings))
 
@@ -42,6 +43,7 @@ def test_config_from_env(tmp_path: Path) -> None:
     assert body["headerName"] == "X-AssignLetters-Id"
     assert "cannot assign" in body["missingHeaderMessage"]
     assert body["apiUrl"] == ""
+    assert body["saveUrl"] is None
 
 
 def test_staff_filter(tmp_path: Path) -> None:
@@ -85,6 +87,7 @@ def test_save_and_logs(tmp_path: Path) -> None:
 
     json_logs = client.get("/api/logs", params={"format": "json"}).json()
     assert json_logs["count"] >= 1
+    assert response.json()["pushedTo"] is None
 
 
 def test_cors_preflight(tmp_path: Path) -> None:
@@ -197,6 +200,63 @@ def test_manifest_uses_request_host_when_configured_localhost(tmp_path: Path) ->
     assert "https://abc.ngrok-free.app/taskpane.html" in xml
     assert "<AppDomain>https://abc.ngrok-free.app</AppDomain>" in xml
     assert "localhost:8000" not in xml
+
+
+def test_config_exposes_save_url(tmp_path: Path) -> None:
+    client = make_client(tmp_path, api_url="https://letters.example/v1/assignments")
+    body = client.get("/api/config").json()
+    assert body["apiUrl"] == "https://letters.example/v1/assignments"
+    assert body["saveUrl"] == "https://letters.example/v1/assignments"
+
+
+def test_save_pushes_to_api_url(tmp_path: Path, monkeypatch) -> None:
+    seen: dict = {}
+
+    def fake_push(api_url, payload, timeout=15.0):
+        seen["api_url"] = api_url
+        seen["payload"] = payload
+        seen["timeout"] = timeout
+        return {"pushed": True, "url": "https://letters.example/v1/assignments", "statusCode": 201}
+
+    monkeypatch.setattr("backend.main.push_saved_assignment", fake_push)
+    client = make_client(tmp_path, api_url="https://letters.example/v1/assignments")
+    response = client.post(
+        "/api/save",
+        json={
+            "staffName": "Ada Lovelace",
+            "department": "ada@contoso.com",
+            "deadlineDate": "2026-09-30",
+            "internetHeaderValue": "AL-1001",
+        },
+    )
+    body = response.json()
+    assert response.status_code == 200
+    assert body["ok"] is True
+    assert body["pushedTo"] == "https://letters.example/v1/assignments"
+    assert seen["api_url"] == "https://letters.example/v1/assignments"
+    assert seen["payload"]["staffName"] == "Ada Lovelace"
+    assert seen["payload"]["internetHeaderValue"] == "AL-1001"
+
+
+def test_save_failed_when_push_errors(tmp_path: Path, monkeypatch) -> None:
+    from backend.push import PushError
+
+    def fake_push(api_url, payload, timeout=15.0):
+        raise PushError("Save API returned HTTP 503")
+
+    monkeypatch.setattr("backend.main.push_saved_assignment", fake_push)
+    client = make_client(tmp_path, api_url="https://letters.example/v1/assignments")
+    body = client.post(
+        "/api/save",
+        json={
+            "staffName": "Ada Lovelace",
+            "department": "ada@contoso.com",
+            "deadlineDate": "2026-09-30",
+            "internetHeaderValue": "AL-1001",
+        },
+    ).json()
+    assert body["ok"] is False
+    assert body["status"] == "Failed"
 
 
 def test_taskpane_assets(tmp_path: Path) -> None:

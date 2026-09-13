@@ -36,6 +36,10 @@ class Settings(BaseSettings):
         default="",
         validation_alias="ASSIGNLETTERS_API_URL",
     )
+    api_timeout_seconds: float = Field(
+        default=15.0,
+        validation_alias="ASSIGNLETTERS_API_TIMEOUT_SECONDS",
+    )
     log_path: Path = Field(
         default=ROOT / "data" / "logs" / "assignletters.log",
         validation_alias="ASSIGNLETTERS_LOG_PATH",

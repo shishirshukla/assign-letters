@@ -24,7 +24,8 @@ Copy `.env.example` to `.env` and change values as needed.
 | `ASSIGNLETTERS_HEADER_NAME` | Internet header the add-in looks for | `X-AssignLetters-Id` |
 | `ASSIGNLETTERS_MISSING_HEADER_MESSAGE` | Shown when the header is absent | (see `.env.example`) |
 | `ASSIGNLETTERS_PUBLIC_BASE_URL` | HTTPS origin substituted into `/manifest.xml` on each request | `https://abc.ngrok-free.app` |
-| `ASSIGNLETTERS_API_URL` | Absolute API origin returned to the task pane (optional; defaults to public base URL) | `https://abc.ngrok-free.app` |
+| `ASSIGNLETTERS_API_URL` | Destination that receives each saved assignment (`POST` JSON). Origin only → `{origin}/api/save`; a full path is used as-is | `https://letters.example/v1/assignments` |
+| `ASSIGNLETTERS_API_TIMEOUT_SECONDS` | Timeout for the save push | `15` |
 | `ASSIGNLETTERS_LOG_PATH` | Text log file | `data/logs/assignletters.log` |
 | `ASSIGNLETTERS_STAFF_PATH` | JSON staff list | `data/staff.json` |
 | `ASSIGNLETTERS_CORS_ALLOW_ORIGINS` | CORS origins (`*` so Outlook Web can call the API) | `*` |
@@ -142,7 +143,7 @@ The task pane POSTs JSON to `/api/save`:
 }
 ```
 
-The API appends a structured line to the log file and returns `{ "ok": true, "status": "Success" }`. The pane then shows **Success** or **Failed**.
+The API appends a structured line to the log file. If `ASSIGNLETTERS_API_URL` is set, it then `POST`s the same JSON to that URL. The pane shows **Success** when the remote API returns HTTP 2xx, or **Failed** otherwise. With no `ASSIGNLETTERS_API_URL`, the save is logged locally only.
 
 ## Deploy (HTTPS host)
 
@@ -160,6 +161,7 @@ pytest -q
 | Path | Role |
 | --- | --- |
 | `backend/main.py` | FastAPI app: health, config, staff, save, logs, manifest, static add-in |
+| `backend/push.py` | POST saved assignments to `ASSIGNLETTERS_API_URL` |
 | `addin/manifest.template.xml` | Outlook Web Read-mode template (`{{PUBLIC_BASE_URL}}` filled at runtime) |
 | `addin/taskpane.html` / `taskpane.js` | Office.js task pane |
 | `data/staff.json` | Staff dropdown source |

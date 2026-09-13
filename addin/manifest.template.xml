@@ -6,7 +6,7 @@
   xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
   xsi:type="MailApp">
   <Id>b7e4c2a1-6d58-4f0b-9c33-2a1e8d4f90aa</Id>
-  <Version>1.0.0.0</Version>
+  <Version>1.0.1.0</Version>
   <ProviderName>AssignLetters</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="AssignLetters" />
@@ -15,7 +15,7 @@
   <HighResolutionIconUrl DefaultValue="https://localhost:8000/icons/icon-128.png" />
   <SupportUrl DefaultValue="https://localhost:8000/" />
   <AppDomains>
-    <AppDomain>localhost</AppDomain>
+    <AppDomain>https://localhost:8000</AppDomain>
   </AppDomains>
   <Hosts>
     <Host Name="Mailbox" />

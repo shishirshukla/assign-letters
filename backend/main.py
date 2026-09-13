@@ -18,6 +18,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.config import ROOT, Settings, get_settings
 from backend.logging_setup import configure_logging
+from backend.manifest import (
+    ManifestUrlError,
+    inject_manifest_urls,
+    resolve_manifest_origin,
+)
 
 logger = logging.getLogger("assignletters")
 
@@ -91,19 +96,6 @@ def filter_staff(rows: list[dict[str, Any]], email: str | None) -> list[dict[str
         if needle == department.strip().lower() or needle in department.lower():
             matched.append(row)
     return matched
-
-
-def inject_manifest_urls(template: str, base_url: str) -> str:
-    base = base_url.rstrip("/")
-    host = base.replace("https://", "").replace("http://", "").split("/")[0]
-    xml = template.replace("https://localhost:8000", base)
-    xml = xml.replace("http://localhost:8000", base)
-    if "<AppDomain>localhost</AppDomain>" in xml and host != "localhost":
-        xml = xml.replace(
-            "<AppDomain>localhost</AppDomain>",
-            f"<AppDomain>localhost</AppDomain>\n    <AppDomain>{host}</AppDomain>",
-        )
-    return xml
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -240,13 +232,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 </html>"""
 
     @app.get("/manifest.xml")
-    def manifest():
+    def manifest(request: Request):
         if not MANIFEST_TEMPLATE.exists():
             raise HTTPException(status_code=500, detail="Manifest template missing")
-        xml = inject_manifest_urls(
-            MANIFEST_TEMPLATE.read_text(encoding="utf-8"),
-            settings.public_base_url,
-        )
+        try:
+            origin = resolve_manifest_origin(settings.public_base_url, request)
+            xml = inject_manifest_urls(
+                MANIFEST_TEMPLATE.read_text(encoding="utf-8"),
+                origin,
+            )
+        except ManifestUrlError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
         ET.fromstring(xml)
         return Response(content=xml, media_type="text/xml")
 

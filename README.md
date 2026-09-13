@@ -94,7 +94,7 @@ Outlook loads add-ins only over **HTTPS**. Serve the Python app, tunnel it, then
 
 1. Start the API locally (port **8000**).
 2. Expose it with HTTPS, for example `ngrok http 8000`.
-3. Put the tunnel origin in `.env` as `ASSIGNLETTERS_PUBLIC_BASE_URL` (and restart), **or** download `https://YOUR-TUNNEL/manifest.xml` from the running server, **or** write a static file:
+3. Put the tunnel origin in `.env` as `ASSIGNLETTERS_PUBLIC_BASE_URL` (and restart), **or** download `https://YOUR-TUNNEL/manifest.xml` from the running server (the file is rewritten to that HTTPS origin automatically), **or** write a static file:
 
 ```bash
 python scripts/set_manifest_url.py https://YOUR-SUBDOMAIN.ngrok-free.app
@@ -119,6 +119,7 @@ If that header is missing, the pane shows `ASSIGNLETTERS_MISSING_HEADER_MESSAGE`
 ### Notes
 
 - Do not upload a manifest that still points at `localhost`. Outlook cannot fetch those URLs.
+- Every URL in the manifest, including `<AppDomain>`, must be an absolute `https://…` origin. A hostname without a scheme (`localhost` or `example.com`) makes Outlook Web report **Error in reading the manifest, Failed to construct URL**.
 - Keep the API and the tunnel running while the add-in is in use.
 - The task pane calls `/api/staff` and `/api/save` from the browser. CORS is enabled (`*` by default).
 - `getAllInternetHeadersAsync` needs Mailbox **1.8** (declared in the manifest). Exchange may strip some custom headers; if the form never appears, inspect the raw MIME headers on the message.

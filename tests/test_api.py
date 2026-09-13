@@ -5,7 +5,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from backend.config import Settings
-from backend.main import create_app, filter_staff, inject_manifest_urls
+from backend.main import create_app, filter_staff
+from backend.manifest import ManifestUrlError, inject_manifest_urls, normalize_public_origin
 
 
 def make_client(tmp_path: Path) -> TestClient:
@@ -111,16 +112,57 @@ def test_manifest_is_read_mode(tmp_path: Path) -> None:
     assert "ItemEdit" not in xml
     assert "MessageComposeCommandSurface" not in xml
     assert "https://assignletters.example/taskpane.html" in xml
+    assert "<AppDomain>https://assignletters.example</AppDomain>" in xml
+    assert "<AppDomain>localhost</AppDomain>" not in xml
+    assert "<AppDomain>assignletters.example</AppDomain>" not in xml
 
 
 def test_inject_manifest_urls() -> None:
     xml = inject_manifest_urls(
-        "<AppDomains>\n    <AppDomain>localhost</AppDomain>\n  </AppDomains>"
-        "https://localhost:8000/taskpane.html",
+        "<OfficeApp>"
+        "<AppDomains>\n    <AppDomain>https://localhost:8000</AppDomain>\n  </AppDomains>"
+        '<SourceLocation DefaultValue="https://localhost:8000/taskpane.html" />'
+        "</OfficeApp>",
         "https://tunnel.example",
     )
     assert "https://tunnel.example/taskpane.html" in xml
-    assert "<AppDomain>tunnel.example</AppDomain>" in xml
+    assert "<AppDomain>https://tunnel.example</AppDomain>" in xml
+    assert "localhost" not in xml
+
+
+def test_normalize_origin_adds_https_and_strips_path() -> None:
+    assert normalize_public_origin("tunnel.example/foo") == "https://tunnel.example"
+    assert normalize_public_origin("https://tunnel.example:8443/") == "https://tunnel.example:8443"
+
+
+def test_inject_rejects_empty_base() -> None:
+    try:
+        inject_manifest_urls("<OfficeApp/>", "")
+    except ManifestUrlError:
+        return
+    raise AssertionError("expected ManifestUrlError")
+
+
+def test_manifest_uses_request_host_when_configured_localhost(tmp_path: Path) -> None:
+    staff = tmp_path / "staff.json"
+    staff.write_text("[]", encoding="utf-8")
+    settings = Settings(
+        log_path=tmp_path / "assignletters.log",
+        staff_path=staff,
+        public_base_url="https://localhost:8000",
+    )
+    client = TestClient(create_app(settings))
+    xml = client.get(
+        "/manifest.xml",
+        headers={
+            "Host": "abc.ngrok-free.app",
+            "X-Forwarded-Host": "abc.ngrok-free.app",
+            "X-Forwarded-Proto": "https",
+        },
+    ).text
+    assert "https://abc.ngrok-free.app/taskpane.html" in xml
+    assert "<AppDomain>https://abc.ngrok-free.app</AppDomain>" in xml
+    assert "localhost:8000" not in xml
 
 
 def test_taskpane_assets(tmp_path: Path) -> None:
@@ -131,3 +173,6 @@ def test_taskpane_assets(tmp_path: Path) -> None:
     js = client.get("/taskpane.js")
     assert js.status_code == 200
     assert "getAllInternetHeadersAsync" in js.text
+    icon = client.get("/icons/icon-64.png")
+    assert icon.status_code == 200
+    assert icon.content[:8] == b"\x89PNG\r\n\x1a\n"

@@ -20,7 +20,7 @@ from backend.config import ROOT, Settings, get_settings
 from backend.logging_setup import configure_logging
 from backend.manifest import (
     ManifestUrlError,
-    inject_manifest_urls,
+    generate_manifest,
     resolve_manifest_origin,
 )
 
@@ -99,7 +99,12 @@ def filter_staff(rows: list[dict[str, Any]], email: str | None) -> list[dict[str
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    settings = settings or get_settings()
+    injected = settings
+
+    def load_settings() -> Settings:
+        return injected if injected is not None else get_settings()
+
+    settings = load_settings()
     log_path = configure_logging(settings.log_path)
     logger.info(
         "startup header=%s log_path=%s staff_path=%s public_base_url=%s",
@@ -236,8 +241,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not MANIFEST_TEMPLATE.exists():
             raise HTTPException(status_code=500, detail="Manifest template missing")
         try:
-            origin = resolve_manifest_origin(settings.public_base_url, request)
-            xml = inject_manifest_urls(
+            current = load_settings()
+            origin = resolve_manifest_origin(current.public_base_url, request)
+            xml = generate_manifest(
                 MANIFEST_TEMPLATE.read_text(encoding="utf-8"),
                 origin,
             )

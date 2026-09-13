@@ -6,16 +6,16 @@
   xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
   xsi:type="MailApp">
   <Id>b7e4c2a1-6d58-4f0b-9c33-2a1e8d4f90aa</Id>
-  <Version>1.0.1.0</Version>
+  <Version>1.0.2.0</Version>
   <ProviderName>AssignLetters</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="AssignLetters" />
   <Description DefaultValue="Assign a staff member and deadline on emails that include the required Internet message header." />
-  <IconUrl DefaultValue="https://localhost:8000/icons/icon-64.png" />
-  <HighResolutionIconUrl DefaultValue="https://localhost:8000/icons/icon-128.png" />
-  <SupportUrl DefaultValue="https://localhost:8000/" />
+  <IconUrl DefaultValue="{{PUBLIC_BASE_URL}}/icons/icon-64.png" />
+  <HighResolutionIconUrl DefaultValue="{{PUBLIC_BASE_URL}}/icons/icon-128.png" />
+  <SupportUrl DefaultValue="{{PUBLIC_BASE_URL}}/" />
   <AppDomains>
-    <AppDomain>https://localhost:8000</AppDomain>
+    <AppDomain>{{PUBLIC_BASE_URL}}</AppDomain>
   </AppDomains>
   <Hosts>
     <Host Name="Mailbox" />
@@ -28,7 +28,7 @@
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
-        <SourceLocation DefaultValue="https://localhost:8000/taskpane.html" />
+        <SourceLocation DefaultValue="{{PUBLIC_BASE_URL}}/taskpane.html" />
         <RequestedHeight>450</RequestedHeight>
       </DesktopSettings>
     </Form>
@@ -76,13 +76,13 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon16" DefaultValue="https://localhost:8000/icons/icon-16.png" />
-        <bt:Image id="Icon32" DefaultValue="https://localhost:8000/icons/icon-32.png" />
-        <bt:Image id="Icon80" DefaultValue="https://localhost:8000/icons/icon-80.png" />
+        <bt:Image id="Icon16" DefaultValue="{{PUBLIC_BASE_URL}}/icons/icon-16.png" />
+        <bt:Image id="Icon32" DefaultValue="{{PUBLIC_BASE_URL}}/icons/icon-32.png" />
+        <bt:Image id="Icon80" DefaultValue="{{PUBLIC_BASE_URL}}/icons/icon-80.png" />
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="Commands.Url" DefaultValue="https://localhost:8000/commands.html" />
-        <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:8000/taskpane.html" />
+        <bt:Url id="Commands.Url" DefaultValue="{{PUBLIC_BASE_URL}}/commands.html" />
+        <bt:Url id="Taskpane.Url" DefaultValue="{{PUBLIC_BASE_URL}}/taskpane.html" />
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="GroupLabel" DefaultValue="AssignLetters" />

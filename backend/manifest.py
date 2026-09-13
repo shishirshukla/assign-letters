@@ -5,7 +5,8 @@ from xml.etree import ElementTree as ET
 
 from fastapi import Request
 
-PLACEHOLDER_ORIGIN = "https://localhost:8000"
+PLACEHOLDER = "{{PUBLIC_BASE_URL}}"
+LEGACY_ORIGIN = "https://localhost:8000"
 
 
 class ManifestUrlError(ValueError):
@@ -21,7 +22,10 @@ def normalize_public_origin(base_url: str) -> str:
     """
     raw = (base_url or "").strip()
     if not raw:
-        raise ManifestUrlError("Public base URL is empty")
+        raise ManifestUrlError(
+            "ASSIGNLETTERS_PUBLIC_BASE_URL is empty. "
+            "Set it to an HTTPS origin such as https://your-host.example"
+        )
     if "://" not in raw:
         raw = "https://" + raw.lstrip("/")
     parsed = urlparse(raw)
@@ -59,18 +63,24 @@ def resolve_manifest_origin(configured: str, request: Request | None = None) -> 
         return origin
     incoming = origin_from_request(request)
     if not is_loopback_origin(incoming):
-        # Sideload file downloaded from the public host (ngrok, Railway, …)
-        # even when .env still points at localhost.
         return incoming
     return origin
 
 
-def inject_manifest_urls(template: str, base_url: str) -> str:
-    origin = normalize_public_origin(base_url)
-    xml = template.replace(PLACEHOLDER_ORIGIN, origin)
+def generate_manifest(template: str, public_base_url: str) -> str:
+    """Fill {{PUBLIC_BASE_URL}} in the Outlook template from the configured origin."""
+    origin = normalize_public_origin(public_base_url)
+    xml = template.replace(PLACEHOLDER, origin)
+    xml = xml.replace(LEGACY_ORIGIN, origin)
     xml = xml.replace("http://localhost:8000", origin)
+    if PLACEHOLDER in xml:
+        raise ManifestUrlError("Manifest template still contains {{PUBLIC_BASE_URL}}")
     validate_manifest_urls(xml)
     return xml
+
+
+def inject_manifest_urls(template: str, base_url: str) -> str:
+    return generate_manifest(template, base_url)
 
 
 def validate_manifest_urls(xml: str) -> None:
@@ -86,7 +96,14 @@ def validate_manifest_urls(xml: str) -> None:
                     f"AppDomain must be an origin with no path, got {text!r}"
                 )
         default = element.attrib.get("DefaultValue")
-        if default and tag in {"IconUrl", "HighResolutionIconUrl", "SupportUrl", "SourceLocation", "Image", "Url"}:
+        if default and tag in {
+            "IconUrl",
+            "HighResolutionIconUrl",
+            "SupportUrl",
+            "SourceLocation",
+            "Image",
+            "Url",
+        }:
             _require_absolute_url(default, context=tag)
 
 

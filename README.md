@@ -23,7 +23,7 @@ Copy `.env.example` to `.env` and change values as needed.
 | --- | --- | --- |
 | `ASSIGNLETTERS_HEADER_NAME` | Internet header the add-in looks for | `X-AssignLetters-Id` |
 | `ASSIGNLETTERS_MISSING_HEADER_MESSAGE` | Shown when the header is absent | (see `.env.example`) |
-| `ASSIGNLETTERS_PUBLIC_BASE_URL` | HTTPS origin baked into `/manifest.xml` | `https://abc.ngrok-free.app` |
+| `ASSIGNLETTERS_PUBLIC_BASE_URL` | HTTPS origin substituted into `/manifest.xml` on each request | `https://abc.ngrok-free.app` |
 | `ASSIGNLETTERS_API_URL` | Absolute API origin returned to the task pane (optional; defaults to public base URL) | `https://abc.ngrok-free.app` |
 | `ASSIGNLETTERS_LOG_PATH` | Text log file | `data/logs/assignletters.log` |
 | `ASSIGNLETTERS_STAFF_PATH` | JSON staff list | `data/staff.json` |
@@ -57,7 +57,7 @@ Open http://127.0.0.1:8000
 | `POST /api/save` | Save assignment (called from the task pane in the browser) |
 | `/api/logs` | Log file as text (`?format=json`, `?tail=200`) |
 | `/logs` | HTML log viewer |
-| `/manifest.xml` | Outlook manifest with `ASSIGNLETTERS_PUBLIC_BASE_URL` |
+| `/manifest.xml` | Outlook manifest generated from `ASSIGNLETTERS_PUBLIC_BASE_URL` |
 | `/taskpane.html` | Add-in task pane |
 | `/taskpane.html?mock=1` | Browser preview with a sample header |
 | `/taskpane.html?mock=1&header=` | Browser preview of the missing-header message |
@@ -94,10 +94,11 @@ Outlook loads add-ins only over **HTTPS**. Serve the Python app, tunnel it, then
 
 1. Start the API locally (port **8000**).
 2. Expose it with HTTPS, for example `ngrok http 8000`.
-3. Put the tunnel origin in `.env` as `ASSIGNLETTERS_PUBLIC_BASE_URL` (and restart), **or** download `https://YOUR-TUNNEL/manifest.xml` from the running server (the file is rewritten to that HTTPS origin automatically), **or** write a static file:
+3. Put the tunnel origin in `.env` as `ASSIGNLETTERS_PUBLIC_BASE_URL` (and restart). Then download `https://YOUR-TUNNEL/manifest.xml`. The XML is generated on each request from that environment variable. To write a static copy:
 
 ```bash
-python scripts/set_manifest_url.py https://YOUR-SUBDOMAIN.ngrok-free.app
+python scripts/set_manifest_url.py
+# or: python scripts/set_manifest_url.py https://YOUR-SUBDOMAIN.ngrok-free.app
 ```
 
 That writes `addin/manifest.xml`.
@@ -159,7 +160,7 @@ pytest -q
 | Path | Role |
 | --- | --- |
 | `backend/main.py` | FastAPI app: health, config, staff, save, logs, manifest, static add-in |
-| `addin/manifest.template.xml` | Outlook Web Read-mode manifest |
+| `addin/manifest.template.xml` | Outlook Web Read-mode template (`{{PUBLIC_BASE_URL}}` filled at runtime) |
 | `addin/taskpane.html` / `taskpane.js` | Office.js task pane |
 | `data/staff.json` | Staff dropdown source |
 | `.env.example` | All supported environment variables |

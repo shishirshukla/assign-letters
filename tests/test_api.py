@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from backend.config import Settings
 from backend.main import create_app, filter_staff
-from backend.manifest import ManifestUrlError, inject_manifest_urls, normalize_public_origin
+from backend.manifest import ManifestUrlError, generate_manifest, normalize_public_origin
 
 
 def make_client(tmp_path: Path) -> TestClient:
@@ -117,17 +117,17 @@ def test_manifest_is_read_mode(tmp_path: Path) -> None:
     assert "<AppDomain>assignletters.example</AppDomain>" not in xml
 
 
-def test_inject_manifest_urls() -> None:
-    xml = inject_manifest_urls(
+def test_generate_manifest_from_placeholder() -> None:
+    xml = generate_manifest(
         "<OfficeApp>"
-        "<AppDomains>\n    <AppDomain>https://localhost:8000</AppDomain>\n  </AppDomains>"
-        '<SourceLocation DefaultValue="https://localhost:8000/taskpane.html" />'
+        "<AppDomains>\n    <AppDomain>{{PUBLIC_BASE_URL}}</AppDomain>\n  </AppDomains>"
+        '<SourceLocation DefaultValue="{{PUBLIC_BASE_URL}}/taskpane.html" />'
         "</OfficeApp>",
         "https://tunnel.example",
     )
     assert "https://tunnel.example/taskpane.html" in xml
     assert "<AppDomain>https://tunnel.example</AppDomain>" in xml
-    assert "localhost" not in xml
+    assert "{{PUBLIC_BASE_URL}}" not in xml
 
 
 def test_normalize_origin_adds_https_and_strips_path() -> None:
@@ -135,12 +135,46 @@ def test_normalize_origin_adds_https_and_strips_path() -> None:
     assert normalize_public_origin("https://tunnel.example:8443/") == "https://tunnel.example:8443"
 
 
-def test_inject_rejects_empty_base() -> None:
+def test_generate_rejects_empty_base() -> None:
     try:
-        inject_manifest_urls("<OfficeApp/>", "")
+        generate_manifest("<OfficeApp/>", "")
     except ManifestUrlError:
         return
     raise AssertionError("expected ManifestUrlError")
+
+
+def test_manifest_reads_public_base_url_from_env(tmp_path: Path, monkeypatch) -> None:
+    staff = tmp_path / "staff.json"
+    staff.write_text("[]", encoding="utf-8")
+    monkeypatch.setenv("ASSIGNLETTERS_PUBLIC_BASE_URL", "https://from-env.example")
+    monkeypatch.setenv("ASSIGNLETTERS_STAFF_PATH", str(staff))
+    monkeypatch.setenv("ASSIGNLETTERS_LOG_PATH", str(tmp_path / "assignletters.log"))
+    client = TestClient(create_app())
+    xml = client.get("/manifest.xml").text
+    assert "https://from-env.example/taskpane.html" in xml
+    assert "<AppDomain>https://from-env.example</AppDomain>" in xml
+    assert "{{PUBLIC_BASE_URL}}" not in xml
+
+
+def test_manifest_env_url_wins_over_request_host(tmp_path: Path) -> None:
+    staff = tmp_path / "staff.json"
+    staff.write_text("[]", encoding="utf-8")
+    settings = Settings(
+        log_path=tmp_path / "assignletters.log",
+        staff_path=staff,
+        public_base_url="https://from-env.example",
+    )
+    client = TestClient(create_app(settings))
+    xml = client.get(
+        "/manifest.xml",
+        headers={
+            "Host": "other-host.example",
+            "X-Forwarded-Host": "other-host.example",
+            "X-Forwarded-Proto": "https",
+        },
+    ).text
+    assert "https://from-env.example/taskpane.html" in xml
+    assert "other-host.example" not in xml
 
 
 def test_manifest_uses_request_host_when_configured_localhost(tmp_path: Path) -> None:

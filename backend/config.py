@@ -36,10 +36,6 @@ class Settings(BaseSettings):
         default="",
         validation_alias="ASSIGNLETTERS_API_URL",
     )
-    api_timeout_seconds: float = Field(
-        default=15.0,
-        validation_alias="ASSIGNLETTERS_API_TIMEOUT_SECONDS",
-    )
     log_path: Path = Field(
         default=ROOT / "data" / "logs" / "assignletters.log",
         validation_alias="ASSIGNLETTERS_LOG_PATH",
@@ -54,10 +50,6 @@ class Settings(BaseSettings):
     )
     host: str = Field(default="0.0.0.0", validation_alias="HOST")
     port: int = Field(default=8000, validation_alias="PORT")
-
-    @property
-    def resolved_api_url(self) -> str:
-        return (self.api_url or self.public_base_url).rstrip("/")
 
     @property
     def cors_origins(self) -> list[str]:

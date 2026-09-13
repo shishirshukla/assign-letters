@@ -77,17 +77,17 @@ def test_save_and_logs(tmp_path: Path) -> None:
         headers={"Origin": "https://outlook.office.com"},
     )
     assert response.status_code == 200
-    assert response.json()["status"] == "Success"
+    assert response.json()["status"] == "Logged"
+    assert response.json()["remoteStatus"] == "-"
     assert response.headers.get("access-control-allow-origin") == "*"
 
     text = client.get("/api/logs").text
-    assert "assignment_saved" in text
+    assert "assignment_push_logged" in text
     assert "AL-1001" in text
     assert "Ada Lovelace" in text
 
     json_logs = client.get("/api/logs", params={"format": "json"}).json()
     assert json_logs["count"] >= 1
-    assert response.json()["pushedTo"] is None
 
 
 def test_cors_preflight(tmp_path: Path) -> None:
@@ -209,16 +209,7 @@ def test_config_exposes_save_url(tmp_path: Path) -> None:
     assert body["saveUrl"] == "https://letters.example/v1/assignments"
 
 
-def test_save_pushes_to_api_url(tmp_path: Path, monkeypatch) -> None:
-    seen: dict = {}
-
-    def fake_push(api_url, payload, timeout=15.0):
-        seen["api_url"] = api_url
-        seen["payload"] = payload
-        seen["timeout"] = timeout
-        return {"pushed": True, "url": "https://letters.example/v1/assignments", "statusCode": 201}
-
-    monkeypatch.setattr("backend.main.push_saved_assignment", fake_push)
+def test_save_logs_remote_push_status(tmp_path: Path) -> None:
     client = make_client(tmp_path, api_url="https://letters.example/v1/assignments")
     response = client.post(
         "/api/save",
@@ -227,25 +218,25 @@ def test_save_pushes_to_api_url(tmp_path: Path, monkeypatch) -> None:
             "department": "ada@contoso.com",
             "deadlineDate": "2026-09-30",
             "internetHeaderValue": "AL-1001",
+            "pushUrl": "https://letters.example/v1/assignments",
+            "pushOk": True,
+            "pushHttpStatus": 201,
         },
     )
     body = response.json()
     assert response.status_code == 200
     assert body["ok"] is True
-    assert body["pushedTo"] == "https://letters.example/v1/assignments"
-    assert seen["api_url"] == "https://letters.example/v1/assignments"
-    assert seen["payload"]["staffName"] == "Ada Lovelace"
-    assert seen["payload"]["internetHeaderValue"] == "AL-1001"
+    assert body["status"] == "Logged"
+    assert body["remoteStatus"] == "Success"
+    logs = client.get("/api/logs").text
+    assert "assignment_push_logged" in logs
+    assert "pushOk=True" in logs
+    assert "pushHttpStatus=201" in logs
+    assert "https://letters.example/v1/assignments" in logs
 
 
-def test_save_failed_when_push_errors(tmp_path: Path, monkeypatch) -> None:
-    from backend.push import PushError
-
-    def fake_push(api_url, payload, timeout=15.0):
-        raise PushError("Save API returned HTTP 503")
-
-    monkeypatch.setattr("backend.main.push_saved_assignment", fake_push)
-    client = make_client(tmp_path, api_url="https://letters.example/v1/assignments")
+def test_save_logs_failed_remote_push(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
     body = client.post(
         "/api/save",
         json={
@@ -253,10 +244,18 @@ def test_save_failed_when_push_errors(tmp_path: Path, monkeypatch) -> None:
             "department": "ada@contoso.com",
             "deadlineDate": "2026-09-30",
             "internetHeaderValue": "AL-1001",
+            "pushUrl": "https://letters.example/v1/assignments",
+            "pushOk": False,
+            "pushHttpStatus": 503,
+            "pushError": "Remote API returned HTTP 503",
         },
     ).json()
-    assert body["ok"] is False
-    assert body["status"] == "Failed"
+    assert body["ok"] is True
+    assert body["status"] == "Logged"
+    assert body["remoteStatus"] == "Failed"
+    logs = client.get("/api/logs").text
+    assert "pushOk=False" in logs
+    assert "remoteStatus=Failed" in logs
 
 
 def test_taskpane_assets(tmp_path: Path) -> None:
@@ -267,6 +266,9 @@ def test_taskpane_assets(tmp_path: Path) -> None:
     js = client.get("/taskpane.js")
     assert js.status_code == 200
     assert "getAllInternetHeadersAsync" in js.text
+    assert "saveUrl" in js.text
+    assert "/api/save" in js.text
+    assert "pushOk" in js.text
     icon = client.get("/icons/icon-64.png")
     assert icon.status_code == 200
     assert icon.content[:8] == b"\x89PNG\r\n\x1a\n"

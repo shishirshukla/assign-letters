@@ -23,7 +23,7 @@ from backend.manifest import (
     generate_manifest,
     resolve_manifest_origin,
 )
-from backend.push import PushError, assignment_push_url, push_saved_assignment
+from backend.push import PushUrlError, assignment_push_url
 
 logger = logging.getLogger("assignletters")
 
@@ -40,6 +40,10 @@ class SaveAssignmentRequest(BaseModel):
     userEmail: str | None = None
     subject: str | None = None
     itemId: str | None = None
+    pushUrl: str | None = None
+    pushOk: bool | None = None
+    pushHttpStatus: int | None = None
+    pushError: str | None = None
 
 
 class RequestLogMiddleware(BaseHTTPMiddleware):
@@ -140,12 +144,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/config")
     def api_config() -> dict[str, Any]:
         current = load_settings()
+        try:
+            save_url = assignment_push_url(current.api_url)
+        except PushUrlError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
         return {
             "headerName": current.header_name,
             "missingHeaderMessage": current.missing_header_message,
-            # Empty means the task pane should call the same origin it was loaded from.
-            "apiUrl": current.api_url.rstrip("/") if current.api_url else "",
-            "saveUrl": assignment_push_url(current.api_url),
+            "apiUrl": save_url or "",
+            "saveUrl": save_url,
             "publicBaseUrl": current.public_base_url,
         }
 
@@ -167,13 +174,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request_id = getattr(request.state, "request_id", "-")
         current = load_settings()
         record = {
-            "savedAt": datetime.now(timezone.utc).isoformat(),
+            "loggedAt": datetime.now(timezone.utc).isoformat(),
             "requestId": request_id,
             **payload.model_dump(),
         }
+        remote_status = "Success" if payload.pushOk else "Failed" if payload.pushOk is False else "-"
         logger.info(
-            "assignment_saved staffName=%s department=%s deadlineDate=%s "
-            "headerName=%s headerValue=%s userEmail=%s subject=%s",
+            "assignment_push_logged staffName=%s department=%s deadlineDate=%s "
+            "headerName=%s headerValue=%s userEmail=%s subject=%s "
+            "pushUrl=%s pushOk=%s pushHttpStatus=%s pushError=%s remoteStatus=%s",
             payload.staffName,
             payload.department,
             payload.deadlineDate,
@@ -181,39 +190,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             payload.internetHeaderValue,
             payload.userEmail or "-",
             payload.subject or "-",
+            payload.pushUrl or "-",
+            payload.pushOk if payload.pushOk is not None else "-",
+            payload.pushHttpStatus if payload.pushHttpStatus is not None else "-",
+            payload.pushError or "-",
+            remote_status,
             extra={"request_id": request_id},
         )
-        try:
-            pushed = push_saved_assignment(
-                current.api_url,
-                record,
-                timeout=current.api_timeout_seconds,
-            )
-        except PushError as exc:
-            logger.exception(
-                "assignment_push_failed url=%s error=%s",
-                assignment_push_url(current.api_url),
-                exc,
-                extra={"request_id": request_id},
-            )
-            return {
-                "ok": False,
-                "status": "Failed",
-                "assignment": record,
-                "error": str(exc),
-            }
-        if pushed.get("pushed"):
-            logger.info(
-                "assignment_pushed url=%s status=%s",
-                pushed.get("url"),
-                pushed.get("statusCode"),
-                extra={"request_id": request_id},
-            )
         return {
             "ok": True,
-            "status": "Success",
+            "status": "Logged",
+            "remoteStatus": remote_status,
             "assignment": record,
-            "pushedTo": pushed.get("url"),
         }
 
     @app.get("/api/logs")
@@ -291,7 +279,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def deploy_info() -> dict[str, Any]:
         return {
             "configuredBaseUrl": settings.public_base_url,
-            "apiUrl": settings.resolved_api_url,
+            "apiUrl": settings.api_url,
             "saveUrl": assignment_push_url(settings.api_url),
             "headerName": settings.header_name,
             "logPath": str(settings.log_path),

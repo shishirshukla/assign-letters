@@ -2,7 +2,7 @@
 
 AssignLetters is a Microsoft Outlook add-in for **Outlook on the web** plus a **Python (FastAPI)** backend.
 
-It opens in **Read mode** (an opened email, not compose). The task pane reads a custom Internet message header with Office.js. If that header is present, the form is shown; otherwise the pane shows a message from configuration. Saving POSTs from the **browser** to the API and displays **Success** or **Failed**.
+It opens in **Read mode** (an opened email, not compose). The task pane reads a custom Internet message header with Office.js. If that header is present, the form is shown; otherwise the pane shows a message from configuration. Saving POSTs the assignment from the **browser** to `ASSIGNLETTERS_API_URL` (a different host than this app). This app only logs the result of that call. The pane then shows **Success** or **Failed**.
 
 ## Defaults
 
@@ -24,8 +24,7 @@ Copy `.env.example` to `.env` and change values as needed.
 | `ASSIGNLETTERS_HEADER_NAME` | Internet header the add-in looks for | `X-AssignLetters-Id` |
 | `ASSIGNLETTERS_MISSING_HEADER_MESSAGE` | Shown when the header is absent | (see `.env.example`) |
 | `ASSIGNLETTERS_PUBLIC_BASE_URL` | HTTPS origin substituted into `/manifest.xml` on each request | `https://abc.ngrok-free.app` |
-| `ASSIGNLETTERS_API_URL` | Destination that receives each saved assignment (`POST` JSON). Origin only → `{origin}/api/save`; a full path is used as-is | `https://letters.example/v1/assignments` |
-| `ASSIGNLETTERS_API_TIMEOUT_SECONDS` | Timeout for the save push | `15` |
+| `ASSIGNLETTERS_API_URL` | Remote API the task pane POSTs the assignment to (not this app). Origin only → `{origin}/api/save`; a full path is used as-is | `https://letters.example/v1/assignments` |
 | `ASSIGNLETTERS_LOG_PATH` | Text log file | `data/logs/assignletters.log` |
 | `ASSIGNLETTERS_STAFF_PATH` | JSON staff list | `data/staff.json` |
 | `ASSIGNLETTERS_CORS_ALLOW_ORIGINS` | CORS origins (`*` so Outlook Web can call the API) | `*` |
@@ -53,9 +52,9 @@ Open http://127.0.0.1:8000
 | --- | --- |
 | `/` | Landing page |
 | `/health` | Health check |
-| `/api/config` | Header name, missing-header message, API URL |
-| `/api/staff` | Staff JSON (`?email=` filters by `Department`) |
-| `POST /api/save` | Save assignment (called from the task pane in the browser) |
+| `GET /api/config` | Header name, missing-header message, remote `saveUrl` |
+| `GET /api/staff` | Staff JSON (`?email=` filters by `Department`) |
+| `POST /api/save` | Log the remote save result (called from the task pane after the push) |
 | `/api/logs` | Log file as text (`?format=json`, `?tail=200`) |
 | `/logs` | HTML log viewer |
 | `/manifest.xml` | Outlook manifest generated from `ASSIGNLETTERS_PUBLIC_BASE_URL` |
@@ -71,7 +70,7 @@ curl -s http://127.0.0.1:8000/api/logs
 curl -s -X POST http://127.0.0.1:8000/api/save \
   -H 'Content-Type: application/json' \
   -H 'Origin: https://outlook.office.com' \
-  -d '{"staffName":"Ada Lovelace","department":"ada@contoso.com","deadlineDate":"2026-09-30","internetHeaderName":"X-AssignLetters-Id","internetHeaderValue":"AL-1001"}'
+  -d '{"staffName":"Ada Lovelace","department":"ada@contoso.com","deadlineDate":"2026-09-30","internetHeaderName":"X-AssignLetters-Id","internetHeaderValue":"AL-1001","pushUrl":"https://letters.example/v1/assignments","pushOk":true,"pushHttpStatus":201}'
 ```
 
 ## Staff JSON
@@ -123,12 +122,12 @@ If that header is missing, the pane shows `ASSIGNLETTERS_MISSING_HEADER_MESSAGE`
 - Do not upload a manifest that still points at `localhost`. Outlook cannot fetch those URLs.
 - Every URL in the manifest, including `<AppDomain>`, must be an absolute `https://…` origin. A hostname without a scheme (`localhost` or `example.com`) makes Outlook Web report **Error in reading the manifest, Failed to construct URL**.
 - Keep the API and the tunnel running while the add-in is in use.
-- The task pane calls `/api/staff` and `/api/save` from the browser. CORS is enabled (`*` by default).
+- The task pane loads staff from this app (`/api/staff`) and POSTs the assignment to `ASSIGNLETTERS_API_URL`. It then POSTs the call status to this app (`/api/save`) for logging. CORS is enabled (`*` by default) so the remote API can be called from the add-in origin; that remote API must also allow the add-in origin.
 - `getAllInternetHeadersAsync` needs Mailbox **1.8** (declared in the manifest). Exchange may strip some custom headers; if the form never appears, inspect the raw MIME headers on the message.
 
 ## Save payload
 
-The task pane POSTs JSON to `/api/save`:
+The task pane reads `saveUrl` from `GET /api/config` (`ASSIGNLETTERS_API_URL`) and POSTs JSON **to that remote API**:
 
 ```json
 {
@@ -143,7 +142,23 @@ The task pane POSTs JSON to `/api/save`:
 }
 ```
 
-The API appends a structured line to the log file. If `ASSIGNLETTERS_API_URL` is set, it then `POST`s the same JSON to that URL. The pane shows **Success** when the remote API returns HTTP 2xx, or **Failed** otherwise. With no `ASSIGNLETTERS_API_URL`, the save is logged locally only.
+It then POSTs the same fields plus the remote result to this app’s `/api/save` so the outcome is written to the log file:
+
+```json
+{
+  "staffName": "Ada Lovelace",
+  "department": "ada@contoso.com",
+  "deadlineDate": "2026-09-30",
+  "internetHeaderName": "X-AssignLetters-Id",
+  "internetHeaderValue": "AL-1001",
+  "pushUrl": "https://letters.example/v1/assignments",
+  "pushOk": true,
+  "pushHttpStatus": 201,
+  "pushError": null
+}
+```
+
+The pane shows **Success** or **Failed** from the remote API response, not from the log call.
 
 ## Deploy (HTTPS host)
 
@@ -161,7 +176,7 @@ pytest -q
 | Path | Role |
 | --- | --- |
 | `backend/main.py` | FastAPI app: health, config, staff, save, logs, manifest, static add-in |
-| `backend/push.py` | POST saved assignments to `ASSIGNLETTERS_API_URL` |
+| `backend/push.py` | Resolve `ASSIGNLETTERS_API_URL` for the task pane |
 | `addin/manifest.template.xml` | Outlook Web Read-mode template (`{{PUBLIC_BASE_URL}}` filled at runtime) |
 | `addin/taskpane.html` / `taskpane.js` | Office.js task pane |
 | `data/staff.json` | Staff dropdown source |

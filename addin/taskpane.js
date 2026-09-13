@@ -1,9 +1,10 @@
 (function () {
+  var appBase = (window.location.origin || "").replace(/\/$/, "");
   var config = {
     headerName: "X-AssignLetters-Id",
     missingHeaderMessage:
       "This message does not include the required assignment header, so AssignLetters cannot open the form.",
-    apiUrl: "",
+    saveUrl: "",
   };
   var headerValue = "";
   var userEmail = "";
@@ -12,10 +13,6 @@
 
   function $(id) {
     return document.getElementById(id);
-  }
-
-  function apiBase() {
-    return (config.apiUrl || window.location.origin || "").replace(/\/$/, "");
   }
 
   function setStatus(message, kind) {
@@ -79,7 +76,7 @@
   }
 
   function loadStaffThenForm() {
-    var url = apiBase() + "/api/staff";
+    var url = appBase + "/api/staff";
     if (userEmail) {
       url += "?email=" + encodeURIComponent(userEmail);
     }
@@ -199,8 +196,7 @@
   }
 
   function loadConfig() {
-    var base = window.location.origin || "";
-    return fetch(base + "/api/config")
+    return fetch(appBase + "/api/config")
       .then(function (res) {
         if (!res.ok) {
           throw new Error("Config request failed (" + res.status + ")");
@@ -211,12 +207,58 @@
         config.headerName = data.headerName || config.headerName;
         config.missingHeaderMessage =
           data.missingHeaderMessage || config.missingHeaderMessage;
-        config.apiUrl = data.apiUrl || base;
+        config.saveUrl = data.saveUrl || data.apiUrl || "";
       })
       .catch(function () {
-        config.apiUrl = base;
+        config.saveUrl = "";
       })
       .then(afterConfig);
+  }
+
+  function logPushStatus(assignment, result) {
+    return fetch(appBase + "/api/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        staffName: assignment.staffName,
+        department: assignment.department,
+        deadlineDate: assignment.deadlineDate,
+        internetHeaderName: assignment.internetHeaderName,
+        internetHeaderValue: assignment.internetHeaderValue,
+        userEmail: assignment.userEmail,
+        subject: assignment.subject,
+        itemId: assignment.itemId,
+        pushUrl: result.url || config.saveUrl || "",
+        pushOk: result.ok,
+        pushHttpStatus: result.status || null,
+        pushError: result.error || null,
+      }),
+    }).catch(function () {
+      return null;
+    });
+  }
+
+  function pushAssignment(url, assignment) {
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(assignment),
+    }).then(function (res) {
+      return res
+        .json()
+        .catch(function () {
+          return {};
+        })
+        .then(function (body) {
+          var ok = res.ok && !(body && body.ok === false);
+          return {
+            ok: ok,
+            status: res.status,
+            url: url,
+            error: ok ? null : "Remote API returned HTTP " + res.status,
+          };
+        });
+    });
   }
 
   $("form").addEventListener("submit", function (event) {
@@ -248,38 +290,46 @@
       return;
     }
 
+    var assignment = {
+      staffName: staff.StaffName,
+      department: staff.Department,
+      deadlineDate: deadline,
+      internetHeaderName: config.headerName,
+      internetHeaderValue: headerValue,
+      userEmail: userEmail,
+      subject: subject,
+      itemId: itemId,
+    };
+
     var saveButton = $("save");
     saveButton.disabled = true;
     setStatus("Saving…", "info");
 
-    fetch(apiBase() + "/api/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        staffName: staff.StaffName,
-        department: staff.Department,
-        deadlineDate: deadline,
-        internetHeaderName: config.headerName,
-        internetHeaderValue: headerValue,
-        userEmail: userEmail,
-        subject: subject,
-        itemId: itemId,
-      }),
-    })
-      .then(function (res) {
-        return res.json().then(function (body) {
-          return { ok: res.ok && body && body.ok, body: body };
-        });
+    var dest = (config.saveUrl || "").replace(/\/$/, "");
+    var push;
+    if (!dest) {
+      push = Promise.resolve({
+        ok: false,
+        status: 0,
+        url: "",
+        error: "ASSIGNLETTERS_API_URL is not configured.",
+      });
+    } else {
+      push = pushAssignment(dest, assignment);
+    }
+
+    push
+      .catch(function (err) {
+        return {
+          ok: false,
+          status: 0,
+          url: dest,
+          error: (err && err.message) || "Network error",
+        };
       })
       .then(function (result) {
-        if (result.ok) {
-          setStatus("Success", "ok");
-          return;
-        }
-        setStatus("Failed", "fail");
-      })
-      .catch(function () {
-        setStatus("Failed", "fail");
+        setStatus(result.ok ? "Success" : "Failed", result.ok ? "ok" : "fail");
+        return logPushStatus(assignment, result);
       })
       .then(function () {
         saveButton.disabled = false;

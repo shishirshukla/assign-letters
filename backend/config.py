@@ -52,10 +52,6 @@ class Settings(BaseSettings):
     port: int = Field(default=8000, validation_alias="PORT")
 
     @property
-    def resolved_api_url(self) -> str:
-        return (self.api_url or self.public_base_url).rstrip("/")
-
-    @property
     def cors_origins(self) -> list[str]:
         raw = self.cors_allow_origins.strip()
         if raw == "*":

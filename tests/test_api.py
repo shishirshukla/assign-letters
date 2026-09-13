@@ -9,7 +9,7 @@ from backend.main import create_app, filter_staff
 from backend.manifest import ManifestUrlError, generate_manifest, normalize_public_origin
 
 
-def make_client(tmp_path: Path) -> TestClient:
+def make_client(tmp_path: Path, **overrides) -> TestClient:
     staff = tmp_path / "staff.json"
     staff.write_text(
         '[{"StaffName":"Ada Lovelace","Department":"ada@contoso.com"},'
@@ -23,6 +23,7 @@ def make_client(tmp_path: Path) -> TestClient:
         header_name="X-AssignLetters-Id",
         missing_header_message="Header missing — cannot assign.",
         cors_allow_origins="*",
+        **overrides,
     )
     return TestClient(create_app(settings))
 
@@ -42,6 +43,7 @@ def test_config_from_env(tmp_path: Path) -> None:
     assert body["headerName"] == "X-AssignLetters-Id"
     assert "cannot assign" in body["missingHeaderMessage"]
     assert body["apiUrl"] == ""
+    assert body["saveUrl"] is None
 
 
 def test_staff_filter(tmp_path: Path) -> None:
@@ -75,11 +77,12 @@ def test_save_and_logs(tmp_path: Path) -> None:
         headers={"Origin": "https://outlook.office.com"},
     )
     assert response.status_code == 200
-    assert response.json()["status"] == "Success"
+    assert response.json()["status"] == "Logged"
+    assert response.json()["remoteStatus"] == "-"
     assert response.headers.get("access-control-allow-origin") == "*"
 
     text = client.get("/api/logs").text
-    assert "assignment_saved" in text
+    assert "assignment_push_logged" in text
     assert "AL-1001" in text
     assert "Ada Lovelace" in text
 
@@ -199,6 +202,62 @@ def test_manifest_uses_request_host_when_configured_localhost(tmp_path: Path) ->
     assert "localhost:8000" not in xml
 
 
+def test_config_exposes_save_url(tmp_path: Path) -> None:
+    client = make_client(tmp_path, api_url="https://letters.example/v1/assignments")
+    body = client.get("/api/config").json()
+    assert body["apiUrl"] == "https://letters.example/v1/assignments"
+    assert body["saveUrl"] == "https://letters.example/v1/assignments"
+
+
+def test_save_logs_remote_push_status(tmp_path: Path) -> None:
+    client = make_client(tmp_path, api_url="https://letters.example/v1/assignments")
+    response = client.post(
+        "/api/save",
+        json={
+            "staffName": "Ada Lovelace",
+            "department": "ada@contoso.com",
+            "deadlineDate": "2026-09-30",
+            "internetHeaderValue": "AL-1001",
+            "pushUrl": "https://letters.example/v1/assignments",
+            "pushOk": True,
+            "pushHttpStatus": 201,
+        },
+    )
+    body = response.json()
+    assert response.status_code == 200
+    assert body["ok"] is True
+    assert body["status"] == "Logged"
+    assert body["remoteStatus"] == "Success"
+    logs = client.get("/api/logs").text
+    assert "assignment_push_logged" in logs
+    assert "pushOk=True" in logs
+    assert "pushHttpStatus=201" in logs
+    assert "https://letters.example/v1/assignments" in logs
+
+
+def test_save_logs_failed_remote_push(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+    body = client.post(
+        "/api/save",
+        json={
+            "staffName": "Ada Lovelace",
+            "department": "ada@contoso.com",
+            "deadlineDate": "2026-09-30",
+            "internetHeaderValue": "AL-1001",
+            "pushUrl": "https://letters.example/v1/assignments",
+            "pushOk": False,
+            "pushHttpStatus": 503,
+            "pushError": "Remote API returned HTTP 503",
+        },
+    ).json()
+    assert body["ok"] is True
+    assert body["status"] == "Logged"
+    assert body["remoteStatus"] == "Failed"
+    logs = client.get("/api/logs").text
+    assert "pushOk=False" in logs
+    assert "remoteStatus=Failed" in logs
+
+
 def test_taskpane_assets(tmp_path: Path) -> None:
     client = make_client(tmp_path)
     html = client.get("/taskpane.html")
@@ -207,6 +266,9 @@ def test_taskpane_assets(tmp_path: Path) -> None:
     js = client.get("/taskpane.js")
     assert js.status_code == 200
     assert "getAllInternetHeadersAsync" in js.text
+    assert "saveUrl" in js.text
+    assert "/api/save" in js.text
+    assert "pushOk" in js.text
     icon = client.get("/icons/icon-64.png")
     assert icon.status_code == 200
     assert icon.content[:8] == b"\x89PNG\r\n\x1a\n"
